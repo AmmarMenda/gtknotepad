@@ -51,6 +51,43 @@ static void file_opened(GObject *object, GAsyncResult *res, gpointer user_data) 
     }
 }
 
+static void file_saved(GObject *object, GAsyncResult *res, gpointer user_data) {
+    GtkFileDialog *dialog = GTK_FILE_DIALOG(object);
+    GError *error = NULL;
+
+    GFile *file = gtk_file_dialog_save_finish(dialog, res, &error);
+
+    if (error) {
+        g_print("Error saving file: %s\n", error->message);
+        g_error_free(error);
+        return;  // Exit the function on error
+    }
+
+    if (file) {
+        char *filename = g_file_get_path(file);
+        GtkTextView *text_view = GTK_TEXT_VIEW(user_data);
+        GtkTextBuffer *buffer = gtk_text_view_get_buffer(text_view);
+
+        if (filename) {
+            FILE *f = fopen(filename, "w");
+            if (f != NULL) {
+                GtkTextIter start, end;
+                gtk_text_buffer_get_start_iter(buffer, &start);
+                gtk_text_buffer_get_end_iter(buffer, &end);
+                char *text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+
+                fputs(text, f);
+                fclose(f);
+                g_free(text);
+            } else {
+                g_print("Error opening file for writing.\n");
+            }
+            g_free(filename);
+        }
+        g_object_unref(file); // Unref the GFile
+    }
+}
+
 static void open_file_dialog(GtkWidget *widget, gpointer user_data) {
     GtkFileDialog *dialog;
     GtkWidget *window = GTK_WIDGET(gtk_widget_get_root(GTK_WIDGET(widget)));
@@ -59,12 +96,21 @@ static void open_file_dialog(GtkWidget *widget, gpointer user_data) {
     gtk_file_dialog_open(dialog, GTK_WINDOW(window), NULL, file_opened, user_data);
 }
 
+static void save_file_dialog(GtkWidget *widget, gpointer user_data) {
+    GtkFileDialog *dialog;
+    GtkWidget *window = GTK_WIDGET(gtk_widget_get_root(GTK_WIDGET(widget)));
+
+    dialog = GTK_FILE_DIALOG(gtk_file_dialog_new());
+    gtk_file_dialog_save(dialog, GTK_WINDOW(window), NULL, file_saved, user_data);
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
     GtkWidget *window;
     GtkWidget *grid;
     GtkTextView *text_view;
     GtkWidget *scrolled_window;
     GtkWidget *open_button;
+    GtkWidget *save_button;
 
     window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(window), "GPad");
@@ -86,6 +132,10 @@ static void activate(GtkApplication *app, gpointer user_data) {
     open_button = gtk_button_new_with_label("Open");
     g_signal_connect(open_button, "clicked", G_CALLBACK(open_file_dialog), text_view);
     gtk_grid_attach(GTK_GRID(grid), open_button, 0, 1, 1, 1);
+
+    save_button = gtk_button_new_with_label("Save");
+    g_signal_connect(save_button, "clicked", G_CALLBACK(save_file_dialog), text_view);
+    gtk_grid_attach(GTK_GRID(grid), save_button, 1, 1, 1, 1);
 
     gtk_widget_show(window);
 }
